@@ -1,0 +1,60 @@
+# composer.json, the JS checks and production build, and that what forums load
+# matches a fresh build: the committed js/dist, and the pdf.js copy in assets/
+# (vendored from the pinned pdfjs-dist by `npm run build`). Every locale key the
+# scripts use must exist in locale/en.yml. Tests and PHPStan run in backend.yml.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+    paths-ignore: ['**.md', 'screenshots/**', 'LICENSE']
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    name: Checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          coverage: none
+          tools: composer:v2
+
+      - name: Validate composer.json
+        run: composer validate --strict
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '26'
+          cache: npm
+          cache-dependency-path: js/package-lock.json
+
+      - name: JS checks and production build
+        working-directory: js
+        run: |
+          npm ci
+          npm run format-check
+          npm run build
+
+      - name: Fail if the committed bundle or pdf.js copy is stale
+        run: |
+          if ! git diff --quiet -- js/dist assets || [ -n "$(git status --porcelain -- js/dist assets)" ]; then
+            echo "js/dist or assets/ differ from a fresh build: run 'npm run build' in js/ and commit." >&2
+            git status --short -- js/dist assets
+            exit 1
+          fi
+
+      - name: Every locale key used exists
+        run: node js/check-locale.cjs
