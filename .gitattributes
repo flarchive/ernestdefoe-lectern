@@ -1,0 +1,4 @@
+/screenshots export-ignore
+/.github export-ignore
+/assets/** linguist-vendored -diff
+/js/dist/** -diff
